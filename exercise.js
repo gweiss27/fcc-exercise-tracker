@@ -34,7 +34,11 @@ routes.get('/', (req, res) => {
 routes.get('/users', (req, res) => {
     User.find((err, data) => {
         if (err) throw new Error(err.message);
-        res.status(200).json({ users: data });
+        let users = [];
+        data.map(user => {
+            users.push({ _id: user._id, username: user.username });
+        });
+        res.status(200).json(users);
     });
 });
 
@@ -55,15 +59,24 @@ routes.post('/new-user', (req, res) => {
  * POST - add a new exercise entry
  */
 routes.post('/add', (req, res) => {
-    const log = new Log({
-        userId: req.body.userId,
-        description: req.body.description,
-        duration: req.body.duration,
-        date: req.body.date || new Date()
-    });
-    log.save((err, data) => {
+    User.findById(req.body.userId, (err, user) => {
         if (err) throw new Error(err.message);
-        res.status(201).json(data);
+        const log = new Log({
+            userId: req.body.userId,
+            description: req.body.description,
+            duration: req.body.duration,
+            date: req.body.date || new Date()
+        });
+        log.save((err, data) => {
+            if (err) throw new Error(err.message);
+            res.json({
+                _id: user._id,
+                username: user.username,
+                description: data.description,
+                duration: data.duration,
+                date: data.date.toDateString()
+            });
+        });
     });
 });
 
@@ -73,44 +86,59 @@ routes.post('/add', (req, res) => {
  * { } = required, [ ] = optional
  * from, to = dates (yyyy-mm-dd); limit = number
  */
-routes.get('/log', (req, res) => {
+routes.get('/log', (req, res, next) => {
     if (req.query.userId === undefined) throw new Error('userId required!');
 
-    // filters
-    const query = {
-        userId: req.query.userId
-    };
+    User.findById(req.query.userId, (err, user) => {
+        if (err) return next(err);
 
-    if (req.query.from !== undefined || req.query.to !== undefined) {
-        query.date = {};
-
-        if (req.query.from !== undefined) {
-            let from = new Date(req.query.from);
-            console.log(from);
-            query.date.$gte = from;
+        // Validate userID:
+        if (!user) {
+            let err = new Error('unknown userId...');
+            err.status = 400;
+            return next(err);
         }
 
-        if (req.query.to !== undefined) {
-            let to = new Date(req.query.to);
-            console.log(to);
-            query.date.$lte = to;
+        // filters
+        const query = {
+            userId: req.query.userId
+        };
+
+        if (req.query.from !== undefined || req.query.to !== undefined) {
+            query.date = {};
+
+            if (req.query.from !== undefined) {
+                query.date.$gte = new Date(req.query.from);
+            }
+
+            if (req.query.to !== undefined) {
+                query.date.$lte = new Date(req.query.to);
+            }
         }
-    }
 
-    console.log(query);
+        let logArray = [];
+        const user_with_log = {
+            _id: user._id,
+            username: user.username,
+            count: 0,
+            log: []
+        };
 
-    if (req.query.limit !== undefined) {
-        let limit = parseInt(req.query.limit);
+        let limit = parseInt(req.query.limit) || 0;
         Log.find(query, (err, data) => {
             if (err) throw new Error(err.message);
-            res.status(200).json(data);
+            data.map(log => {
+                logArray.push({
+                    description: log.description,
+                    duration: log.duration,
+                    date: log.date
+                });
+            });
+            user_with_log.count = logArray.length;
+            user_with_log.log = logArray;
+            res.json(user_with_log);
         }).limit(limit);
-    } else {
-        Log.find(query, (err, data) => {
-            if (err) throw new Error(err.message);
-            res.status(200).json(data);
-        });
-    }
+    });
 });
 
 module.exports = routes;
