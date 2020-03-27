@@ -47,7 +47,7 @@ routes.post('/new-user', (req, res) => {
     });
     user.save((err, data) => {
         if (err) throw new Error(err.message);
-        res.status(201).json({ userId: data._id, username: req.body.username });
+        res.status(201).json({ _id: data._id, username: req.body.username });
     });
 });
 
